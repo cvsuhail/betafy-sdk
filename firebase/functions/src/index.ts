@@ -37,7 +37,7 @@ export const logHeartbeat = functions.https.onCall(
 
     const testerData = testerSnap.data() || {};
     const deviceMismatch =
-      (testerData.deviceId && testerData.deviceId !== data.deviceId) ||
+      (testerData.deviceId && testerData.deviceId !== data.deviceId) || 
       (testerData.installId && testerData.installId !== data.installId);
 
     if (deviceMismatch) {
@@ -89,6 +89,7 @@ export const logHeartbeat = functions.https.onCall(
       multiAccountDetected: false,
       deviceMismatch: false,
     };
+    
   }
 );
 

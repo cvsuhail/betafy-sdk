@@ -35,6 +35,7 @@ class SharedPrefsStore {
   }
 
   Future<void> clearPending() async {
+    
     await _prefs.remove(_pendingHeartbeatsKey);
   }
 

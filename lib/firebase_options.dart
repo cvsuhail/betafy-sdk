@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAfx7MY6mX61raZTIN3aqR0ZZAGMmNmj7Q',
-    appId: '1:20529395804:android:eaf4c6605fe075d9f1ce99',
+    appId: '1:20529395804:android:5c60e663e8a262a0f1ce99',
     messagingSenderId: '20529395804',
     projectId: 'betafy-2e207',
     storageBucket: 'betafy-2e207.firebasestorage.app',
@@ -65,4 +65,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'betafy-2e207.firebasestorage.app',
     iosBundleId: 'com.awwads.betafy',
   );
+
 }

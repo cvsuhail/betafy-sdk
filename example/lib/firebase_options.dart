@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAfx7MY6mX61raZTIN3aqR0ZZAGMmNmj7Q',
-    appId: '1:20529395804:android:cce11b31fcbae757f1ce99',
+    appId: '1:20529395804:android:eaf4c6605fe075d9f1ce99',
     messagingSenderId: '20529395804',
     projectId: 'betafy-2e207',
     storageBucket: 'betafy-2e207.firebasestorage.app',
@@ -59,10 +59,10 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCDtVtwkl7vzS_NtHSu-t4VLAvLots801k',
-    appId: '1:20529395804:ios:1abdfba93f5f384df1ce99',
+    appId: '1:20529395804:ios:5c807c956e6e40ddf1ce99',
     messagingSenderId: '20529395804',
     projectId: 'betafy-2e207',
     storageBucket: 'betafy-2e207.firebasestorage.app',
-    iosBundleId: 'com.example.example',
+    iosBundleId: 'com.awwads.betafy',
   );
 }
