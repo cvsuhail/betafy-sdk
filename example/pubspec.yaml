@@ -39,8 +39,7 @@ dependencies:
   tester_heartbeat_sdk:
     git:
       url: https://github.com/cvsuhail/betafy-sdk.git
-      path: betafy-sdk
-      ref: main
+      ref: CvFix
 
   # Firebase dependencies
   firebase_core: ^3.4.0
