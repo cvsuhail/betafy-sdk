@@ -31,40 +31,70 @@ class FirebaseHeartbeatService {
     FirebaseAuth? auth,
     FirebaseFunctions? functions,
     FirebaseOptions? options,
-  })  : _auth = auth ?? FirebaseAuth.instance,
-        _functions = functions ?? FirebaseFunctions.instance,
-        _options = options;
+    String? sdkFirebaseAppName,
+  })  : _auth = auth,
+        _functions = functions,
+        _options = options,
+        _sdkFirebaseAppName = sdkFirebaseAppName ?? 'betafy_sdk',
+        _sdkApp = null;
 
-  final FirebaseAuth _auth;
-  final FirebaseFunctions _functions;
+  final FirebaseAuth? _auth;
+  final FirebaseFunctions? _functions;
   final FirebaseOptions? _options;
+  final String _sdkFirebaseAppName;
+  FirebaseApp? _sdkApp;
+  FirebaseAuth? _sdkAuth;
+  FirebaseFunctions? _sdkFunctions;
   bool _initialized = false;
 
   Future<void> initialize() async {
     if (_initialized) return;
 
     try {
-      // Check if Firebase is already initialized
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: _options,
-        );
+      // If SDK-specific Firebase options provided, create separate app instance
+      if (_options != null) {
+        // Check if SDK Firebase app already exists
+        try {
+          _sdkApp = Firebase.app(_sdkFirebaseAppName);
+        } catch (e) {
+          // App doesn't exist, create it
+          _sdkApp = await Firebase.initializeApp(
+            name: _sdkFirebaseAppName,
+            options: _options,
+          );
+        }
+        
+        // Use SDK-specific instances
+        _sdkAuth = FirebaseAuth.instanceFor(app: _sdkApp!);
+        _sdkFunctions = FirebaseFunctions.instanceFor(app: _sdkApp!);
+      } else {
+        // Use default Firebase instance (app's Firebase project)
+        // Check if Firebase is already initialized
+        if (Firebase.apps.isEmpty) {
+          throw StateError(
+            'Firebase not initialized. Either initialize Firebase in your app or provide SDK Firebase options.',
+          );
+        }
+        // Use default instances
+        _sdkAuth = _auth ?? FirebaseAuth.instance;
+        _sdkFunctions = _functions ?? FirebaseFunctions.instance;
       }
-      // If Firebase is already initialized, we just continue without re-initializing
     } catch (e) {
-      // Firebase might already be initialized, which is fine
-      // We catch all exceptions to prevent initialization failures
-      debugPrint('Firebase initialization warning: $e');
+      debugPrint('Firebase initialization error: $e');
+      rethrow;
     }
 
     await _ensureAuth();
     _initialized = true;
   }
 
+  FirebaseAuth get _authInstance => _sdkAuth ?? FirebaseAuth.instance;
+  FirebaseFunctions get _functionsInstance => _sdkFunctions ?? FirebaseFunctions.instance;
+
   Future<HeartbeatResponse> logHeartbeat(HeartbeatEvent event) async {
     await initialize();
 
-    final callable = _functions.httpsCallable('logHeartbeat');
+    final callable = _functionsInstance.httpsCallable('logHeartbeat');
 
     try {
       final result = await retry(
@@ -103,11 +133,11 @@ class FirebaseHeartbeatService {
 
   Future<void> _ensureAuth() async {
     try {
-      final user = _auth.currentUser;
+      final user = _authInstance.currentUser;
       if (user == null) {
         // Try to sign in anonymously, but don't fail if it's not allowed
         try {
-          await _auth.signInAnonymously();
+          await _authInstance.signInAnonymously();
         } catch (authError) {
           // If anonymous sign-in is not enabled or not allowed, we continue anyway
           // The Cloud Function should handle authentication as needed
@@ -119,5 +149,78 @@ class FirebaseHeartbeatService {
       // If there's any other error with auth, we continue anyway
       debugPrint('Firebase Auth check failed (continuing anyway): $e');
     }
+  }
+
+  /// Verify a claim code and bind installId to testerId/gigId
+  Future<ClaimVerificationResponse> verifyClaimCode({
+    required String claimCode,
+    required String installId,
+    required String deviceId,
+    required String packageName,
+    required bool isEmulator,
+  }) async {
+    await initialize();
+
+    final callable = _functionsInstance.httpsCallable('verifyClaimCode');
+
+    try {
+      final result = await retry(
+        () async {
+          final response = await callable.call<Map<String, dynamic>>({
+            'claimCode': claimCode,
+            'installId': installId,
+            'deviceId': deviceId,
+            'packageName': packageName,
+            'isEmulator': isEmulator,
+          });
+          return response.data;
+        },
+        retryIf: (e) =>
+            e is FirebaseFunctionsException || e is FirebaseException,
+        maxAttempts: 3,
+      );
+
+      return ClaimVerificationResponse.fromJson(result);
+    } catch (e) {
+      debugPrint('Failed to verify claim code: $e');
+      if (e is FirebaseFunctionsException) {
+        return ClaimVerificationResponse(
+          success: false,
+          error: e.message ?? 'Unknown error',
+          code: e.code,
+        );
+      }
+      return ClaimVerificationResponse(
+        success: false,
+        error: e.toString(),
+        code: 'unknown',
+      );
+    }
+  }
+}
+
+class ClaimVerificationResponse {
+  ClaimVerificationResponse({
+    required this.success,
+    this.gigId,
+    this.testerId,
+    this.error,
+    this.code,
+  });
+
+  final bool success;
+  final String? gigId;
+  final String? testerId;
+  final String? error;
+  final String? code;
+
+  factory ClaimVerificationResponse.fromJson(Map<String, dynamic> json) {
+    return ClaimVerificationResponse(
+      success: json['success'] as bool? ?? false,
+      gigId: json['gigId'] as String?,
+      testerId: json['testerId'] as String?,
+      error: json['error'] as String?,
+      code: json['code'] as String?,
+    );
   }
 }

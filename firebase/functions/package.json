@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc",
-    "lint": "eslint --ext .ts src",
+    "build": "npx tsc",
+    "lint": "npx eslint --ext .ts src",
     "serve": "npm run build && firebase emulators:start --only functions",
-    "deploy": "npm run build && firebase deploy --only functions:logHeartbeat"
+    "deploy": "npm run build && firebase deploy --only functions"
   },
   "engines": {
     "node": "20"

@@ -10,29 +10,100 @@ Flutter SDK for Play Store beta testing programs. It tracks tester heartbeats, p
 - Firestore structure with 14-day streak tracking
 
 ## Quick Start
-1. Add the package to your tester app:
+
+### 🚀 3 Simple Steps
+
+**1. Add dependency:**
+```yaml
+dependencies:
+  tester_heartbeat_sdk:
+    git:
+      url: https://github.com/your-username/betafy-sdk.git
+      path: betafy-sdk
+      ref: main
+```
+
+**2. Initialize Firebase (your existing code):**
+```dart
+await Firebase.initializeApp(
+  options: DefaultFirebaseOptions.currentPlatform,
+);
+```
+
+**3. Wrap your app:**
+```dart
+BetafyWrapperSimple(
+  sdkFirebaseOptions: BetafyFirebaseOptions.currentPlatform,
+  child: MaterialApp(home: HomeScreen()),
+)
+```
+
+**That's it!** See [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) for complete guide.
+
+### Manual Setup (Advanced)
+
+If you need more control:
+
+1. Add the package:
    ```yaml
    dependencies:
      tester_heartbeat_sdk:
        path: ../tester_heartbeat_sdk
    ```
-2. Initialize in your app `main()`:
+
+2. Initialize with claim mode:
    ```dart
-   void main() async {
-     WidgetsFlutterBinding.ensureInitialized();
-     await TesterHeartbeatSDK.initialize(
-       gigId: 'GIG123',
-       testerId: 'USER123',
-       onEmulatorDetected: () {},
-       onMultiAccountDetected: () {},
-     );
-     runApp(MyApp());
+   final status = await TesterHeartbeatSDK.initializeWithClaim(
+     onEmulatorDetected: () {},
+     onMultiAccountDetected: () {},
+   );
+   ```
+
+3. Handle claim flow:
+   ```dart
+   if (status == ClaimStatus.unclaimed) {
+     final result = await TesterHeartbeatSDK.verifyClaimCode(claimCode);
    }
    ```
+
+See [IMPLEMENTATION_GUIDE.md](./IMPLEMENTATION_GUIDE.md) for complete manual setup.
+
+### For Direct Testing (Legacy Mode)
+
+If you already have `gigId` and `testerId` available:
+
+```dart
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await TesterHeartbeatSDK.initialize(
+    gigId: 'GIG123',
+    testerId: 'USER123',
+    onEmulatorDetected: () {},
+    onMultiAccountDetected: () {},
+  );
+  runApp(MyApp());
+}
+```
+
 3. Optional manual heartbeat:
    ```dart
    await TesterHeartbeatSDK.sendHeartbeat();
    ```
+
+## 📚 Documentation
+
+### 🚀 Getting Started
+
+- **[INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md)** - ⭐ **Complete integration guide for other apps**
+- **[SIMPLE_SETUP.md](./SIMPLE_SETUP.md)** - Quick 3-step setup guide
+- **[GITHUB_INTEGRATION.md](./GITHUB_INTEGRATION.md)** - Add SDK from GitHub repository
+
+### 📖 Detailed Guides
+
+- **[HOW_IT_WORKS_DIFFERENT_FIREBASE.md](./HOW_IT_WORKS_DIFFERENT_FIREBASE.md)** - How SDK works with different Firebase projects
+- **[CLAIM_FLOW_GUIDE.md](./CLAIM_FLOW_GUIDE.md)** - Detailed claim flow explanation
+- **[MULTI_ACCOUNT_PREVENTION.md](./MULTI_ACCOUNT_PREVENTION.md)** - Multi-account prevention guide
+- **[IMPLEMENTATION_GUIDE.md](./IMPLEMENTATION_GUIDE.md)** - Advanced implementation guide
 
 ## Firebase Setup
 1. Create Firebase project and enable:
@@ -44,13 +115,17 @@ Flutter SDK for Play Store beta testing programs. It tracks tester heartbeats, p
    ```bash
    firebase deploy --only firestore:rules
    ```
-4. Deploy Cloud Function:
+4. Deploy Cloud Functions:
    ```bash
    cd firebase/functions
    npm install
    npm run lint
-   firebase deploy --only functions:logHeartbeat
+   firebase deploy --only functions
    ```
+   
+   This deploys both `logHeartbeat` and `verifyClaimCode` functions.
+
+See [FIREBASE_QUICK_REFERENCE.md](./FIREBASE_QUICK_REFERENCE.md) for detailed Firebase setup.
 
 ## Firestore Structure
 ```

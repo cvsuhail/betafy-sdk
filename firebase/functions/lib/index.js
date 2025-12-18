@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logHeartbeat = void 0;
+exports.verifyClaimCode = exports.logHeartbeat = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions"));
 admin.initializeApp();
@@ -52,17 +52,44 @@ exports.logHeartbeat = functions.https.onCall(async (data, context) => {
     const testerData = testerSnap.data() || {};
     const deviceMismatch = (testerData.deviceId && testerData.deviceId !== data.deviceId) ||
         (testerData.installId && testerData.installId !== data.installId);
+    // ENHANCED: Check if deviceId is used by another tester IN THIS GIG
+    let multiAccountDetected = false;
     if (deviceMismatch) {
+        // Device/install changed for this tester
+        multiAccountDetected = true;
+    }
+    else {
+        // Check if this deviceId is used by another tester in THIS SPECIFIC GIG
+        const gigDeviceCheck = await db
+            .collection('gigs')
+            .doc(gigId)
+            .collection('testers')
+            .where('deviceId', '==', data.deviceId)
+            .get();
+        const otherTestersInGig = gigDeviceCheck.docs.filter(doc => doc.id !== testerId);
+        if (otherTestersInGig.length > 0) {
+            // Another tester is using this device in the same gig - MULTI-ACCOUNT DETECTED
+            multiAccountDetected = true;
+        }
+    }
+    if (deviceMismatch || multiAccountDetected) {
         await testerRef.set({
             locked: true,
             suspiciousDevice: data.deviceId,
             lastSessionId: data.sessionId,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            multiAccountDetected: true,
+        }, { merge: true });
+        // Update device tracking
+        await db.collection('devices').doc(data.deviceId).set({
+            testerIds: admin.firestore.FieldValue.arrayUnion(testerId),
+            flagged: true,
+            flaggedAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
         return {
             completed: false,
             multiAccountDetected: true,
-            deviceMismatch: true,
+            deviceMismatch: deviceMismatch,
         };
     }
     await testerRef.set({
@@ -72,6 +99,13 @@ exports.logHeartbeat = functions.https.onCall(async (data, context) => {
         lastSeen: admin.firestore.FieldValue.serverTimestamp(),
         isEmulator: data.isEmulator,
         locked: testerData.locked ?? false,
+    }, { merge: true });
+    // Update global device tracking
+    await db.collection('devices').doc(data.deviceId).set({
+        testerIds: admin.firestore.FieldValue.arrayUnion(testerId),
+        gigIds: admin.firestore.FieldValue.arrayUnion(gigId),
+        lastUsed: admin.firestore.FieldValue.serverTimestamp(),
+        packageName: data.device?.appPackageName || '',
     }, { merge: true });
     const today = new Date();
     const dateKey = today.toISOString().slice(0, 10);
@@ -137,3 +171,107 @@ async function hasFourteenDayStreak(testerRef) {
     }
     return true;
 }
+exports.verifyClaimCode = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
+    }
+    const { claimCode, installId, deviceId, packageName, isEmulator } = data;
+    if (!claimCode || !installId || !deviceId || !packageName) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required fields: claimCode, installId, deviceId, packageName');
+    }
+    // Look up claim code
+    const claimDoc = await db.collection('claimCodes').doc(claimCode).get();
+    if (!claimDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Invalid claim code');
+    }
+    const claimData = claimDoc.data();
+    const { gigId, testerId, used, expiresAt } = claimData;
+    // Check if already used
+    if (used === true) {
+        throw new functions.https.HttpsError('failed-precondition', 'Claim code has already been used');
+    }
+    // Check if expired
+    const expiresAtDate = expiresAt.toDate();
+    if (new Date() > expiresAtDate) {
+        throw new functions.https.HttpsError('deadline-exceeded', 'Claim code has expired');
+    }
+    // Verify package name matches
+    if (claimData.packageName !== packageName) {
+        throw new functions.https.HttpsError('permission-denied', 'Claim code is not valid for this app package');
+    }
+    // Check if installId is already bound to another tester
+    const installsSnapshot = await db
+        .collection('gigs')
+        .doc(gigId)
+        .collection('testers')
+        .where('installId', '==', installId)
+        .limit(1)
+        .get();
+    if (!installsSnapshot.empty) {
+        const existingTester = installsSnapshot.docs[0];
+        if (existingTester.id !== testerId) {
+            throw new functions.https.HttpsError('already-exists', 'This install is already bound to another tester');
+        }
+    }
+    // PREVENT MULTIPLE ACCOUNTS ON SAME DEVICE FOR SAME GIG
+    // Rule: Same tester can join multiple gigs, but multiple testers cannot join same gig on same device
+    // Check if deviceId is already used by another tester in THIS SPECIFIC GIG
+    const deviceCheckSnapshot = await db
+        .collection('gigs')
+        .doc(gigId)
+        .collection('testers')
+        .where('deviceId', '==', deviceId)
+        .limit(1)
+        .get();
+    if (!deviceCheckSnapshot.empty) {
+        const existingTesterWithDevice = deviceCheckSnapshot.docs[0];
+        if (existingTesterWithDevice.id !== testerId) {
+            // Device already used by another tester in THIS GIG - PREVENT CLAIM
+            throw new functions.https.HttpsError('permission-denied', 'This device is already being used by another tester account for this gig. Only one account per device per gig is allowed.');
+        }
+        // Same tester, same device, same gig - this is a re-claim, allow it
+    }
+    // Get tester document
+    const testerRef = db.doc(`gigs/${gigId}/testers/${testerId}`);
+    const testerSnap = await testerRef.get();
+    if (!testerSnap.exists) {
+        throw new functions.https.HttpsError('not-found', 'Tester not found in gig');
+    }
+    // Update tester with install binding
+    await testerRef.set({
+        installId: installId,
+        deviceId: deviceId,
+        isEmulator: isEmulator,
+        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+        packageName: packageName,
+    }, { merge: true });
+    // Mark claim code as used
+    await db.collection('claimCodes').doc(claimCode).update({
+        used: true,
+        usedAt: admin.firestore.FieldValue.serverTimestamp(),
+        usedByInstallId: installId,
+    });
+    // Store install binding for quick lookup
+    await db.collection('installs').doc(installId).set({
+        gigId: gigId,
+        testerId: testerId,
+        deviceId: deviceId,
+        packageName: packageName,
+        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    // Track device globally (for monitoring, not prevention across gigs)
+    // Same tester can use same device for multiple gigs
+    await db.collection('devices').doc(deviceId).set({
+        testerIds: admin.firestore.FieldValue.arrayUnion(testerId),
+        gigIds: admin.firestore.FieldValue.arrayUnion(gigId),
+        lastUsed: admin.firestore.FieldValue.serverTimestamp(),
+        packageName: packageName,
+        // Track per-gig usage for monitoring
+        [`gig_${gigId}_tester`]: testerId,
+    }, { merge: true });
+    return {
+        success: true,
+        gigId: gigId,
+        testerId: testerId,
+    };
+});

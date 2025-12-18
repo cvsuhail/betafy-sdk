@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 
@@ -22,12 +23,13 @@ class HeartbeatService with WidgetsBindingObserver {
     EmulatorCheck? emulatorCheck,
     SharedPrefsStore? prefsStore,
     Uuid? uuid,
+    FirebaseOptions? sdkFirebaseOptions,
   })  : _onEmulatorDetected = onEmulatorDetected,
         _onMultiAccountDetected = onMultiAccountDetected,
         _heartbeatInterval = heartbeatInterval,
         _deviceInfoService = deviceInfoService ?? DeviceInfoService(),
-        _firebaseService =
-            firebaseHeartbeatService ?? FirebaseHeartbeatService(),
+        _firebaseService = firebaseHeartbeatService ?? 
+            FirebaseHeartbeatService(options: sdkFirebaseOptions),
         _emulatorCheck = emulatorCheck ?? EmulatorCheck(),
         _prefsStore = prefsStore,
         _uuid = uuid ?? const Uuid();

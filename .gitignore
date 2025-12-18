@@ -100,6 +100,7 @@ firebase/functions/.env
 firebase/functions/.env.local
 firebase/functions/lib/
 firebase/functions/.runtimeconfig.json
+firebase/functions/.cache/
 
 # Node.js
 node_modules/
@@ -158,6 +159,11 @@ $RECYCLE.BIN/
 coverage/
 *.lcov
 test/.test_coverage.dart
+*.coverage
+
+# Documentation
+doc/
+api-docs/
 
 # Temporary files
 *.tmp
@@ -165,3 +171,15 @@ test/.test_coverage.dart
 *.bak
 *.swp
 *~
+*.cache
+
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
