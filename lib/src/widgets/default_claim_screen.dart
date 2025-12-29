@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 /// Default claim code input screen used by wrapper widgets
 class DefaultClaimScreen extends StatefulWidget {
-  final Future<void> Function(String) onClaim;
+  final Future<String?> Function(String) onClaim;
 
   const DefaultClaimScreen({super.key, required this.onClaim});
 
@@ -27,11 +27,14 @@ class _DefaultClaimScreenState extends State<DefaultClaimScreen> {
       _error = null;
     });
 
-    await widget.onClaim(code);
+    final error = await widget.onClaim(code);
 
     if (mounted) {
       setState(() {
         _isVerifying = false;
+        if (error != null) {
+          _error = error;
+        }
       });
     }
   }
@@ -111,4 +114,3 @@ class _DefaultClaimScreenState extends State<DefaultClaimScreen> {
     super.dispose();
   }
 }
-

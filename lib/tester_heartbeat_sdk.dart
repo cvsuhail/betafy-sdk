@@ -47,7 +47,7 @@ class TesterHeartbeatSDK {
 
   /// Initialize the SDK in claim mode (for closed testing).
   /// This will check for existing claim binding or wait for claim.
-  /// 
+  ///
   /// [sdkFirebaseOptions] - Optional. If provided, SDK will use separate Firebase project.
   /// If not provided, SDK will use app's default Firebase project.
   static Future<ClaimStatus> initializeWithClaim({
@@ -97,7 +97,7 @@ class TesterHeartbeatSDK {
   /// Verify a claim code and bind this install to a tester/gig.
   /// If successful, automatically initializes the heartbeat service.
   /// Callbacks must be provided if not already initialized.
-  /// 
+  ///
   /// [sdkFirebaseOptions] - Optional. If provided, SDK will use separate Firebase project.
   /// If not provided, SDK will use app's default Firebase project.
   static Future<ClaimResult> verifyClaimCode(
@@ -129,7 +129,9 @@ class TesterHeartbeatSDK {
         isEmulator: isEmulator,
       );
 
-      if (response.success && response.gigId != null && response.testerId != null) {
+      if (response.success &&
+          response.gigId != null &&
+          response.testerId != null) {
         // Store claim binding
         final prefs = await SharedPrefsStore.instance();
         await prefs.saveClaimBinding(response.gigId!, response.testerId!);
@@ -194,13 +196,14 @@ class TesterHeartbeatSDK {
       );
     }
     await _instance._service!.waitForReady();
-  } 
+  }
 }
 
 /// Status of claim initialization
 enum ClaimStatus {
   /// Install is already claimed and SDK is ready
   claimed,
+
   /// Install is not yet claimed, needs user to enter claim code
   unclaimed,
 }
@@ -221,4 +224,3 @@ class ClaimResult {
   final String? error;
   final String? errorCode;
 }
-  

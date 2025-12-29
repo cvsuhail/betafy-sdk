@@ -224,6 +224,12 @@ export const verifyClaimCode = functions.https.onCall(
 
     const { claimCode, installId, deviceId, packageName, isEmulator } = data;
 
+    console.log('Claim code:', claimCode);
+    console.log('Install ID:', installId);
+    console.log('Device ID:', deviceId);
+    console.log('Package name:', packageName);
+    console.log('Is emulator:', isEmulator);
+  
     if (!claimCode || !installId || !deviceId || !packageName) {
       throw new functions.https.HttpsError(
         'invalid-argument',
@@ -234,6 +240,8 @@ export const verifyClaimCode = functions.https.onCall(
     // Look up claim code
     const claimDoc = await db.collection('claimCodes').doc(claimCode).get();
 
+    console.log('Claim document:', claimDoc);
+
     if (!claimDoc.exists) {
       throw new functions.https.HttpsError(
         'not-found',
@@ -243,7 +251,12 @@ export const verifyClaimCode = functions.https.onCall(
 
     const claimData = claimDoc.data()!;
     const { gigId, testerId, used, expiresAt } = claimData;
-
+    
+    console.log('Claim data:', claimData);
+    console.log('Gig ID:', gigId);
+    console.log('Tester ID:', testerId);
+    console.log('Used:', used);
+    console.log('Expires at:', expiresAt);
     // Check if already used
     if (used === true) {
       throw new functions.https.HttpsError(
@@ -268,6 +281,8 @@ export const verifyClaimCode = functions.https.onCall(
         'Claim code is not valid for this app package'
       );
     }
+    
+    console.log('Package name matches:', claimData.packageName === packageName);
 
     // Check if installId is already bound to another tester
     const installsSnapshot = await db
@@ -312,7 +327,7 @@ export const verifyClaimCode = functions.https.onCall(
     }
 
     // Get tester document
-    const testerRef = db.doc(`gigs/${gigId}/testers/${testerId}`);
+    const testerRef = db.collection("users").doc(testerId);
     const testerSnap = await testerRef.get();
 
     if (!testerSnap.exists) {

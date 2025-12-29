@@ -3,9 +3,9 @@ import 'package:tester_heartbeat_sdk/tester_heartbeat_sdk.dart';
 import 'default_claim_screen.dart';
 
 /// Wrapper widget with additional customization options.
-/// 
+///
 /// Use [BetafyWrapperSimple] for the simplest setup.
-/// 
+///
 /// This wrapper allows custom claim screens and heartbeat intervals.
 class BetafyWrapper extends StatefulWidget {
   /// Your app widget
@@ -18,7 +18,8 @@ class BetafyWrapper extends StatefulWidget {
   final VoidCallback? onMultiAccountDetected;
 
   /// Custom claim code screen builder (optional)
-  final Widget Function(BuildContext, Future<void> Function(String))? claimScreen;
+  final Widget Function(BuildContext, Future<String?> Function(String))?
+      claimScreen;
 
   /// Heartbeat interval (default: 1 hour)
   final Duration? heartbeatInterval;
@@ -39,6 +40,7 @@ class BetafyWrapper extends StatefulWidget {
 class _BetafyWrapperState extends State<BetafyWrapper> {
   bool _isInitializing = true;
   ClaimStatus? _claimStatus;
+  String? _initError;
 
   @override
   void initState() {
@@ -64,18 +66,13 @@ class _BetafyWrapperState extends State<BetafyWrapper> {
       if (mounted) {
         setState(() {
           _isInitializing = false;
+          _initError = 'SDK Error: $e';
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('SDK Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     }
   }
 
-  Future<void> _handleClaimCode(String claimCode) async {
+  Future<String?> _handleClaimCode(String claimCode) async {
     try {
       final result = await TesterHeartbeatSDK.verifyClaimCode(
         claimCode,
@@ -95,25 +92,12 @@ class _BetafyWrapperState extends State<BetafyWrapper> {
             _claimStatus = status;
           });
         }
+        return null;
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result.error ?? 'Failed to verify claim code'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        return result.error ?? 'Failed to verify claim code';
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      return 'Error: $e';
     }
   }
 
@@ -136,6 +120,46 @@ class _BetafyWrapperState extends State<BetafyWrapper> {
       );
     }
 
+    if (_initError != null) {
+      return MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    'SDK Initialization Error',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _initError!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _isInitializing = true;
+                        _initError = null;
+                      });
+                      _initialize();
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     if (_claimStatus == ClaimStatus.unclaimed) {
       if (widget.claimScreen != null) {
         return widget.claimScreen!(context, _handleClaimCode);
@@ -146,4 +170,3 @@ class _BetafyWrapperState extends State<BetafyWrapper> {
     return widget.child;
   }
 }
-
