@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 /// Default claim code input screen used by wrapper widgets
 class DefaultClaimScreen extends StatefulWidget {
@@ -33,20 +34,31 @@ class _DefaultClaimScreenState extends State<DefaultClaimScreen> {
     } catch (e) {
       // Handle error display - use ScaffoldMessenger key or show in UI
       if (mounted) {
-        // Try using ScaffoldMessenger key
-        if (_scaffoldMessengerKey.currentState != null) {
-          _scaffoldMessengerKey.currentState!.showSnackBar(
-            SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        } else {
-          // If ScaffoldMessenger key is not ready, show error in UI
-          setState(() {
-            _error = 'Error: $e';
-          });
-        }
+        // Schedule callback to ensure ScaffoldMessenger is ready
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            // Try using ScaffoldMessenger key
+            if (_scaffoldMessengerKey.currentState != null) {
+              _scaffoldMessengerKey.currentState!.showSnackBar(
+                SnackBar(
+                  content: Text('Error: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            } else {
+              // If ScaffoldMessenger key is still not ready, show error in UI
+              if (mounted) {
+                setState(() {
+                  _error = 'Error: $e';
+                });
+              }
+            }
+          }
+        });
+        // Also show error in UI immediately as fallback
+        setState(() {
+          _error = 'Error: $e';
+        });
       }
     }
 
