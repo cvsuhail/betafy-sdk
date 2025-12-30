@@ -18,8 +18,7 @@ class BetafyWrapper extends StatefulWidget {
   final VoidCallback? onMultiAccountDetected;
 
   /// Custom claim code screen builder (optional)
-  final Widget Function(BuildContext, Future<String?> Function(String))?
-      claimScreen;
+  final Widget Function(BuildContext, Future<void> Function(BuildContext, String))? claimScreen;
 
   /// Heartbeat interval (default: 1 hour)
   final Duration? heartbeatInterval;
@@ -72,7 +71,7 @@ class _BetafyWrapperState extends State<BetafyWrapper> {
     }
   }
 
-  Future<String?> _handleClaimCode(String claimCode) async {
+  Future<void> _handleClaimCode(BuildContext claimScreenContext, String claimCode) async {
     try {
       final result = await TesterHeartbeatSDK.verifyClaimCode(
         claimCode,
@@ -92,12 +91,14 @@ class _BetafyWrapperState extends State<BetafyWrapper> {
             _claimStatus = status;
           });
         }
-        return null;
       } else {
-        return result.error ?? 'Failed to verify claim code';
+        // Throw error so claim screen can handle it
+        throw Exception(result.error ?? 'Failed to verify claim code');
       }
     } catch (e) {
-      return 'Error: $e';
+      // Re-throw so claim screen can handle error display
+      // The claim screen has access to ScaffoldMessenger via its key
+      rethrow;
     }
   }
 
@@ -164,7 +165,9 @@ class _BetafyWrapperState extends State<BetafyWrapper> {
       if (widget.claimScreen != null) {
         return widget.claimScreen!(context, _handleClaimCode);
       }
-      return DefaultClaimScreen(onClaim: _handleClaimCode);
+      return DefaultClaimScreen(
+        onClaim: (claimScreenContext, claimCode) => _handleClaimCode(claimScreenContext, claimCode),
+      );
     }
 
     return widget.child;

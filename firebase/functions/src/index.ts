@@ -30,27 +30,72 @@ export const logHeartbeat = functions.https.onCall(
     validatePayload(data);
 
     const { gigId, testerId } = data;
+    
+    // First, get the gig document to check if testers are stored as a map
+    const gigRef = db.doc(`gigs/${gigId}`);
+    const gigSnap = await gigRef.get();
+    
+    if (!gigSnap.exists) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        'Gig not found'
+      );
+    }
+
+    const gigData = gigSnap.data() || {};
+    const testersMap = gigData.testers || {};
+    
+    // Check if tester exists in the gig's testers map
+    let testerData: any = null;
+    let testerExistsInMap = false;
+    
+    if (testersMap && typeof testersMap === 'object' && testersMap[testerId]) {
+      testerData = testersMap[testerId];
+      testerExistsInMap = true;
+    }
+    
+    // Also check subcollection for backward compatibility
     const testerRef = db.doc(`gigs/${gigId}/testers/${testerId}`);
     const testerSnap = await testerRef.get();
-    if (!testerSnap.exists) {
+    
+    if (!testerExistsInMap && !testerSnap.exists) {
       throw new functions.https.HttpsError(
         'not-found',
         'Tester not assigned to gig'
       );
     }
+    
+    // Get tester data from subcollection if map doesn't have it
+    if (!testerExistsInMap && testerSnap.exists) {
+      testerData = testerSnap.data() || {};
+    } else if (testerExistsInMap && testerSnap.exists) {
+      // Merge both sources, subcollection takes precedence for device info
+      const subcollectionData = testerSnap.data() || {};
+      testerData = { ...testerData, ...subcollectionData };
+    }
 
-    const testerData = testerSnap.data() || {};
     const deviceMismatch =
       (testerData.deviceId && testerData.deviceId !== data.deviceId) || 
       (testerData.installId && testerData.installId !== data.installId);
 
     // ENHANCED: Check if deviceId is used by another tester IN THIS GIG
     let multiAccountDetected = false;
-    if (deviceMismatch) {
-      // Device/install changed for this tester
-      multiAccountDetected = true;
-    } else {
-      // Check if this deviceId is used by another tester in THIS SPECIFIC GIG
+    
+    // Check in testers map first
+    if (testersMap && typeof testersMap === 'object') {
+      for (const [otherTesterId, otherTesterData] of Object.entries(testersMap)) {
+        if (otherTesterId !== testerId && otherTesterData && typeof otherTesterData === 'object') {
+          const otherTester = otherTesterData as any;
+          if (otherTester.deviceId === data.deviceId) {
+            multiAccountDetected = true;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Also check subcollection
+    if (!multiAccountDetected) {
       const gigDeviceCheck = await db
         .collection('gigs')
         .doc(gigId)
@@ -63,76 +108,132 @@ export const logHeartbeat = functions.https.onCall(
       );
       
       if (otherTestersInGig.length > 0) {
-        // Another tester is using this device in the same gig - MULTI-ACCOUNT DETECTED
         multiAccountDetected = true;
       }
     }
-
-    if (deviceMismatch || multiAccountDetected) {
-      await testerRef.set(
-        {
-          locked: true,
-          suspiciousDevice: data.deviceId,
-          lastSessionId: data.sessionId,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          multiAccountDetected: true,
-        },
-        { merge: true }
-      );
-
-      // Update device tracking
-      await db.collection('devices').doc(data.deviceId).set(
-        {
-          testerIds: admin.firestore.FieldValue.arrayUnion(testerId),
-          flagged: true,
-          flaggedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      return {
-        completed: false,
-        multiAccountDetected: true,
-        deviceMismatch: deviceMismatch,
-      };
+    
+    if (deviceMismatch) {
+      multiAccountDetected = true;
     }
 
-    await testerRef.set(
-      {
-        deviceId: data.deviceId,
-        installId: data.installId,
-        lastSessionId: data.sessionId,
-        lastSeen: admin.firestore.FieldValue.serverTimestamp(),
-        isEmulator: data.isEmulator,
-        locked: testerData.locked ?? false,
-      },
-      { merge: true }
-    );
+    // Prepare updated tester data
+    const updatedTesterData = {
+      deviceId: data.deviceId,
+      installId: data.installId,
+      lastSessionId: data.sessionId,
+      lastSeen: admin.firestore.FieldValue.serverTimestamp(),
+      isEmulator: data.isEmulator,
+      locked: testerData.locked ?? false,
+      ...(multiAccountDetected ? {
+        locked: true,
+        suspiciousDevice: data.deviceId,
+        multiAccountDetected: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      } : {}),
+    };
 
-    // Update global device tracking
+    // Update tester in the gig's testers map
+    if (testerExistsInMap) {
+      const updatedTestersMap = {
+        ...testersMap,
+        [testerId]: {
+          ...testerData,
+          ...updatedTesterData,
+          // Update daily stats
+          totalOpenCount: (testerData.totalOpenCount || 0) + data.timestamps.length,
+          lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }
+      };
+      
+      await gigRef.update({
+        testers: updatedTestersMap,
+        updatedDate: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    // Also update/create subcollection document for backward compatibility
+    await testerRef.set(updatedTesterData, { merge: true });
+
+    // Update device tracking
     await db.collection('devices').doc(data.deviceId).set(
       {
         testerIds: admin.firestore.FieldValue.arrayUnion(testerId),
         gigIds: admin.firestore.FieldValue.arrayUnion(gigId),
         lastUsed: admin.firestore.FieldValue.serverTimestamp(),
         packageName: data.device?.appPackageName || '',
+        ...(multiAccountDetected ? {
+          flagged: true,
+          flaggedAt: admin.firestore.FieldValue.serverTimestamp(),
+        } : {}),
       },
       { merge: true }
     );
 
+    // Update daily heartbeat tracking in subcollection (for streak calculation)
     const today = new Date();
     const dateKey = today.toISOString().slice(0, 10);
     const dayRef = testerRef.collection('days').doc(dateKey);
+    
+    // Get existing day data
+    const daySnap = await dayRef.get();
+    const existingDayData = daySnap.exists ? (daySnap.data() || {}) : {};
+    const existingOpens = existingDayData.opens || 0;
+    const existingTimestamps = existingDayData.timestamps || [];
+    
     await dayRef.set(
       {
-        opens: admin.firestore.FieldValue.increment(data.timestamps.length),
+        opens: existingOpens + data.timestamps.length,
         timestamps: admin.firestore.FieldValue.arrayUnion(...data.timestamps),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        date: dateKey,
+        usageDuration: existingDayData.usageDuration || 0,
+        deviceSnapshot: testerData.deviceSnapshot || data.device || {},
       },
       { merge: true }
     );
 
+    // Also update the day in the testers map if it exists
+    if (testerExistsInMap && testerData.days) {
+      const updatedDays = { ...testerData.days };
+      if (!updatedDays[dateKey]) {
+        updatedDays[dateKey] = {
+          date: dateKey,
+          heartbeatCount: 0,
+          openTimes: [],
+          usageDuration: 0,
+          deviceSnapshot: testerData.deviceSnapshot || data.device || {},
+        };
+      }
+      
+      updatedDays[dateKey] = {
+        ...updatedDays[dateKey],
+        heartbeatCount: (updatedDays[dateKey].heartbeatCount || 0) + data.timestamps.length,
+        openTimes: [...(updatedDays[dateKey].openTimes || []), ...data.timestamps],
+        deviceSnapshot: testerData.deviceSnapshot || data.device || {},
+      };
+      
+      const updatedTestersMapWithDays = {
+        ...testersMap,
+        [testerId]: {
+          ...testersMap[testerId],
+          days: updatedDays,
+        }
+      };
+      
+      await gigRef.update({
+        testers: updatedTestersMapWithDays,
+      });
+    }
+
     const completed = await hasFourteenDayStreak(testerRef);
+
+    if (multiAccountDetected) {
+      return {
+        completed: false,
+        multiAccountDetected: true,
+        deviceMismatch: deviceMismatch,
+      };
+    }
 
     return {
       completed,
@@ -284,7 +385,36 @@ export const verifyClaimCode = functions.https.onCall(
     
     console.log('Package name matches:', claimData.packageName === packageName);
 
-    // Check if installId is already bound to another tester
+    // Get gig document to check testers map
+    const gigRef = db.doc(`gigs/${gigId}`);
+    const gigSnap = await gigRef.get();
+    
+    if (!gigSnap.exists) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        'Gig not found'
+      );
+    }
+
+    const gigData = gigSnap.data() || {};
+    const testersMap = gigData.testers || {};
+
+    // Check if installId is already bound to another tester in the map
+    if (testersMap && typeof testersMap === 'object') {
+      for (const [otherTesterId, otherTesterData] of Object.entries(testersMap)) {
+        if (otherTesterId !== testerId && otherTesterData && typeof otherTesterData === 'object') {
+          const otherTester = otherTesterData as any;
+          if (otherTester.installId === installId) {
+            throw new functions.https.HttpsError(
+              'already-exists',
+              'This install is already bound to another tester'
+            );
+          }
+        }
+      }
+    }
+
+    // Also check subcollection for backward compatibility
     const installsSnapshot = await db
       .collection('gigs')
       .doc(gigId)
@@ -304,8 +434,23 @@ export const verifyClaimCode = functions.https.onCall(
     }
 
     // PREVENT MULTIPLE ACCOUNTS ON SAME DEVICE FOR SAME GIG
-    // Rule: Same tester can join multiple gigs, but multiple testers cannot join same gig on same device
     // Check if deviceId is already used by another tester in THIS SPECIFIC GIG
+    // First check in map
+    if (testersMap && typeof testersMap === 'object') {
+      for (const [otherTesterId, otherTesterData] of Object.entries(testersMap)) {
+        if (otherTesterId !== testerId && otherTesterData && typeof otherTesterData === 'object') {
+          const otherTester = otherTesterData as any;
+          if (otherTester.deviceId === deviceId) {
+            throw new functions.https.HttpsError(
+              'permission-denied',
+              'This device is already being used by another tester account for this gig. Only one account per device per gig is allowed.'
+            );
+          }
+        }
+      }
+    }
+
+    // Also check subcollection
     const deviceCheckSnapshot = await db
       .collection('gigs')
       .doc(gigId)
@@ -317,37 +462,57 @@ export const verifyClaimCode = functions.https.onCall(
     if (!deviceCheckSnapshot.empty) {
       const existingTesterWithDevice = deviceCheckSnapshot.docs[0];
       if (existingTesterWithDevice.id !== testerId) {
-        // Device already used by another tester in THIS GIG - PREVENT CLAIM
         throw new functions.https.HttpsError(
           'permission-denied',
           'This device is already being used by another tester account for this gig. Only one account per device per gig is allowed.'
         );
       }
-      // Same tester, same device, same gig - this is a re-claim, allow it
     }
 
-    // Get tester document
-    const testerRef = db.collection("users").doc(testerId);
+    // Get tester from map or subcollection
+    let testerData: any = null;
+    if (testersMap && typeof testersMap === 'object' && testersMap[testerId]) {
+      testerData = testersMap[testerId];
+    }
+
+    const testerRef = db.doc(`gigs/${gigId}/testers/${testerId}`);
     const testerSnap = await testerRef.get();
 
-    if (!testerSnap.exists) {
+    if (!testerData && !testerSnap.exists) {
       throw new functions.https.HttpsError(
         'not-found',
         'Tester not found in gig'
       );
     }
 
-    // Update tester with install binding
-    await testerRef.set(
-      {
-        installId: installId,
-        deviceId: deviceId,
-        isEmulator: isEmulator,
-        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
-        packageName: packageName,
-      },
-      { merge: true }
-    );
+    // Update tester with install binding in both map and subcollection
+    const updatedTesterData = {
+      installId: installId,
+      deviceId: deviceId,
+      isEmulator: isEmulator,
+      claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+      packageName: packageName,
+      status: 'active',
+    };
+
+    // Update in map
+    if (testersMap && typeof testersMap === 'object') {
+      const updatedTestersMap = {
+        ...testersMap,
+        [testerId]: {
+          ...(testerData || {}),
+          ...updatedTesterData,
+        }
+      };
+      
+      await gigRef.update({
+        testers: updatedTestersMap,
+        updatedDate: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    // Update/create subcollection document
+    await testerRef.set(updatedTesterData, { merge: true });
 
     // Mark claim code as used
     await db.collection('claimCodes').doc(claimCode).update({
@@ -369,14 +534,12 @@ export const verifyClaimCode = functions.https.onCall(
     );
 
     // Track device globally (for monitoring, not prevention across gigs)
-    // Same tester can use same device for multiple gigs
     await db.collection('devices').doc(deviceId).set(
       {
         testerIds: admin.firestore.FieldValue.arrayUnion(testerId),
         gigIds: admin.firestore.FieldValue.arrayUnion(gigId),
         lastUsed: admin.firestore.FieldValue.serverTimestamp(),
         packageName: packageName,
-        // Track per-gig usage for monitoring
         [`gig_${gigId}_tester`]: testerId,
       },
       { merge: true }
@@ -389,4 +552,3 @@ export const verifyClaimCode = functions.https.onCall(
     };
   }
 );
-
