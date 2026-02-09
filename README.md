@@ -8,6 +8,14 @@ Flutter SDK for Play Store beta testing programs. It tracks tester heartbeats, p
 - Emulator detection + callbacks
 - Multi-account detection via Firebase Cloud Function
 - Firestore structure with 14-day streak tracking
+- **Comprehensive Analytics & Reporting:**
+  - Screen view tracking with duration
+  - Button click and interaction tracking
+  - Feature usage monitoring
+  - Crash and error reporting
+  - Custom event logging
+  - Session tracking with detailed metrics
+  - Automatic route observation
 
 ## Quick Start
 
@@ -89,6 +97,98 @@ void main() async {
    ```dart
    await TesterHeartbeatSDK.sendHeartbeat();
    ```
+
+## Analytics & Reporting
+
+The SDK now includes comprehensive analytics and reporting features to help app owners understand how testers are using their app.
+
+### Automatic Screen Tracking
+
+Add the route observer to your MaterialApp:
+
+```dart
+final routeObserver = BetafyRouteObserver();
+
+MaterialApp(
+  navigatorObservers: [routeObserver],
+  // ... rest of your app
+)
+```
+
+### Manual Event Tracking
+
+Track custom events, button clicks, and more:
+
+```dart
+// Track a button click
+TesterHeartbeatSDK.trackButtonClick('login_button', properties: {
+  'screen': 'LoginScreen',
+  'timestamp': DateTime.now().toIso8601String(),
+});
+
+// Track feature usage
+TesterHeartbeatSDK.trackFeatureUsage('dark_mode', properties: {
+  'enabled': true,
+});
+
+// Track custom events
+TesterHeartbeatSDK.trackCustomEvent('video_played', properties: {
+  'video_id': 'abc123',
+  'duration': 120,
+});
+
+// Track errors
+TesterHeartbeatSDK.trackError('API call failed', 
+  stackTrace: stackTrace.toString(),
+  context: {'endpoint': '/api/users'},
+);
+
+// Track crashes (fatal errors)
+TesterHeartbeatSDK.trackCrash(
+  'Unhandled exception',
+  stackTrace.toString(),
+  context: {'screen': 'HomeScreen'},
+);
+```
+
+### Session Analytics
+
+Get current session data:
+
+```dart
+final session = TesterHeartbeatSDK.getCurrentSession();
+print('Session ID: ${session?.sessionId}');
+print('Screen Views: ${session?.screenViews}');
+print('Errors: ${session?.errorCount}');
+print('Crashes: ${session?.crashCount}');
+```
+
+### What Gets Tracked
+
+The SDK automatically tracks:
+- **Screen Views**: Which screens testers visit and how long they stay
+- **Session Duration**: Total time spent in each session
+- **App Opens**: Every time the app is opened
+- **Crashes**: Any fatal errors that occur
+- **Errors**: Non-fatal exceptions and errors
+
+App owners can manually track:
+- **Button Clicks**: User interactions with UI elements
+- **Feature Usage**: Which features are being used
+- **Custom Events**: Any app-specific events
+- **Video/Audio Playback**: Media consumption
+- **Form Submissions**: User input and conversions
+- **API Calls**: Network activity and performance
+
+### Analytics Dashboard
+
+All analytics data is sent to Firebase and can be viewed in the owner dashboard, showing:
+- Daily active users and session counts
+- Most visited screens
+- Feature usage heatmaps
+- Error and crash reports with stack traces
+- Session timelines showing tester behavior
+- Custom event analytics
 
 ## 📚 Documentation
 

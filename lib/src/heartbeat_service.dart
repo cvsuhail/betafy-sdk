@@ -10,6 +10,7 @@ import 'models/device_data.dart';
 import 'models/heartbeat_event.dart';
 import 'utils/emulator_check.dart';
 import 'utils/shared_prefs.dart';
+import 'services/analytics_service.dart';
 
 class HeartbeatService with WidgetsBindingObserver {
   HeartbeatService({
@@ -54,6 +55,7 @@ class HeartbeatService with WidgetsBindingObserver {
   bool _sending = false;
   bool _ready = false;
   HeartbeatEvent? lastEvent;
+  AnalyticsService? _analyticsService;
 
   Future<SharedPrefsStore> get _prefs async {
     return _prefsStore ??= await SharedPrefsStore.instance();
@@ -70,9 +72,21 @@ class HeartbeatService with WidgetsBindingObserver {
     }
     await _hydratePending();
     await _firebaseService.initialize();
+    
+    // Initialize analytics service
+    _analyticsService = AnalyticsService(
+      gigId: gigId,
+      testerId: testerId,
+      firebaseService: _firebaseService,
+    );
+    await _analyticsService!.initialize();
+    
     await sendHeartbeat();
     _ready = true;
   }
+
+  /// Get the analytics service instance
+  AnalyticsService? get analyticsService => _analyticsService;
 
   Future<void> waitForReady() async {
     while (!_ready) {
@@ -151,5 +165,6 @@ class HeartbeatService with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
+    _analyticsService?.dispose();
   }
 }

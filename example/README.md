@@ -1,26 +1,32 @@
 # Betafy SDK Example App
 
-This example demonstrates how to integrate the Betafy SDK into a Flutter app using GitHub dependency.
+This example demonstrates how to integrate the Betafy SDK into your Flutter app with a modern, beautiful UI.
 
 ## 📋 Prerequisites
 
-1. Flutter SDK installed
-2. Firebase project set up (optional - for your app's Firebase)
-3. Access to the betafy-sdk GitHub repository
+1. Flutter SDK installed (>=3.4.0)
+2. A device or emulator to test on
+3. Firebase project (optional - the SDK uses its own Firebase backend)
 
 ## 🚀 Quick Start
 
 ### 1. Install Dependencies
 
 ```bash
-cd example
+cd betafy-sdk/example
 flutter pub get
 ```
 
 ### 2. Run the Example
 
+**Run the simple wrapper example:**
 ```bash
-flutter run
+flutter run -t lib/main.dart
+```
+
+**Run the advanced claim flow example:**
+```bash
+flutter run -t lib/main_claim_example.dart
 ```
 
 ## 📱 Example Implementations
@@ -62,18 +68,40 @@ final result = await TesterHeartbeatSDK.verifyClaimCode(
 - ✅ Manual claim verification
 - ✅ Full control over the flow
 
+## 🎨 UI Features
+
+The example app showcases a modern, minimal design:
+
+- ✨ **Gradient backgrounds** with smooth color transitions
+- 🎯 **Clean card-based layouts** with proper shadows
+- 🔤 **Beautiful typography** with proper spacing and hierarchy
+- 🎨 **Color-coded status indicators** (purple for active, green for success)
+- ⚡ **Smooth animations** and transitions
+- 📱 **Responsive design** that works on all screen sizes
+
 ## 🔧 Configuration
 
-### Using GitHub Dependency
+### Using Local Dependency
 
-The example uses the SDK from GitHub:
+The example uses the SDK from the parent directory (local path):
+
+```yaml
+dependencies:
+  tester_heartbeat_sdk:
+    path: ../
+```
+
+This is the recommended approach for development and testing.
+
+### For Production Apps
+
+Use the SDK from GitHub or pub.dev:
 
 ```yaml
 dependencies:
   tester_heartbeat_sdk:
     git:
-      url: https://github.com/cvsuhail/betafy-sdk.git
-      path: betafy-sdk
+      url: https://github.com/YOUR_USERNAME/betafy-sdk.git
       ref: main
 ```
 
@@ -101,8 +129,10 @@ await Firebase.initializeApp(
 
 ## 📚 More Information
 
-- See [INTEGRATION_GUIDE.md](../INTEGRATION_GUIDE.md) for complete integration guide
-- See [LOGIC.md](../LOGIC.md) for how the claim flow works
+- **[INTEGRATION_EXAMPLE.md](./INTEGRATION_EXAMPLE.md)** - Complete code examples for integrating the SDK
+- **[INTEGRATION_GUIDE.md](../INTEGRATION_GUIDE.md)** - Detailed integration guide
+- **[LOGIC.md](../LOGIC.md)** - How the claim flow works
+- **[README.md](../README.md)** - SDK overview and features
 
 ## 🐛 Troubleshooting
 

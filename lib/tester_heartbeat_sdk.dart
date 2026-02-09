@@ -3,6 +3,9 @@ library tester_heartbeat_sdk;
 export 'src/widgets/betafy_wrapper.dart';
 export 'src/widgets/betafy_wrapper_simple.dart';
 export 'betafy_firebase_options.dart';
+export 'src/models/analytics_event.dart';
+export 'src/services/analytics_service.dart';
+export 'src/utils/analytics_route_observer.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
@@ -14,6 +17,8 @@ import 'package:tester_heartbeat_sdk/src/firebase_service.dart';
 import 'package:tester_heartbeat_sdk/src/utils/shared_prefs.dart';
 import 'package:tester_heartbeat_sdk/src/device_info_service.dart';
 import 'package:tester_heartbeat_sdk/src/utils/emulator_check.dart';
+import 'package:tester_heartbeat_sdk/src/services/analytics_service.dart';
+import 'package:tester_heartbeat_sdk/src/models/analytics_event.dart';
 
 /// Public API surface for the tester heartbeat SDK.
 class TesterHeartbeatSDK {
@@ -187,6 +192,56 @@ class TesterHeartbeatSDK {
     final prefs = await SharedPrefsStore.instance();
     await prefs.clearClaimBinding();
     _instance._service = null;
+  }
+
+  // ============ Analytics Methods ============
+
+  /// Track a screen view
+  static void trackScreenView(String screenName) {
+    _instance._service?.analyticsService?.trackScreenView(screenName);
+  }
+
+  /// Track a button click
+  static void trackButtonClick(String buttonName, {Map<String, dynamic>? properties}) {
+    _instance._service?.analyticsService?.trackButtonClick(buttonName, properties: properties);
+  }
+
+  /// Track feature usage
+  static void trackFeatureUsage(String featureName, {Duration? duration, Map<String, dynamic>? properties}) {
+    _instance._service?.analyticsService?.trackFeatureUsage(
+      featureName,
+      duration: duration,
+      properties: properties,
+    );
+  }
+
+  /// Track a custom event
+  static void trackCustomEvent(String eventName, {Map<String, dynamic>? properties}) {
+    _instance._service?.analyticsService?.trackCustomEvent(eventName, properties: properties);
+  }
+
+  /// Track an error (non-fatal)
+  static void trackError(String errorMessage, {String? stackTrace, Map<String, dynamic>? context}) {
+    _instance._service?.analyticsService?.trackError(
+      errorMessage,
+      stackTrace: stackTrace,
+      context: context,
+    );
+  }
+
+  /// Track a crash (fatal error)
+  static void trackCrash(String error, String stackTrace, {Map<String, dynamic>? context}) {
+    _instance._service?.analyticsService?.trackCrash(error, stackTrace, context: context);
+  }
+
+  /// Get current session data
+  static SessionData? getCurrentSession() {
+    return _instance._service?.analyticsService?.currentSession;
+  }
+
+  /// Get analytics service for advanced usage
+  static AnalyticsService? getAnalyticsService() {
+    return _instance._service?.analyticsService;
   }
 
   static Future<void> _ensureInitialized() async {

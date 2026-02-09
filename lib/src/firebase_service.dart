@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:retry/retry.dart';
 
 import 'models/heartbeat_event.dart';
+import 'models/analytics_event.dart';
 
 class HeartbeatResponse {
   HeartbeatResponse({
@@ -195,6 +196,68 @@ class FirebaseHeartbeatService {
         error: e.toString(),
         code: 'unknown',
       );
+    }
+  }
+
+  /// Log analytics events to Firebase
+  Future<void> logAnalytics({
+    required String gigId,
+    required String testerId,
+    SessionData? sessionData,
+    required List<AnalyticsEvent> events,
+  }) async {
+    await initialize();
+
+    final callable = _functionsInstance.httpsCallable('logAnalytics');
+
+    try {
+      await retry(
+        () async {
+          await callable.call<Map<String, dynamic>>({
+            'gigId': gigId,
+            'testerId': testerId,
+            if (sessionData != null) 'sessionData': sessionData.toJson(),
+            'events': events.map((e) => e.toJson()).toList(),
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+          });
+        },
+        retryIf: (e) =>
+            e is FirebaseFunctionsException || e is FirebaseException,
+        maxAttempts: 3,
+      );
+    } catch (e) {
+      debugPrint('Failed to log analytics: $e');
+      // Don't throw, just log the error
+    }
+  }
+
+  /// Log crash reports to Firebase
+  Future<void> logCrashReports({
+    required String gigId,
+    required String testerId,
+    required List<CrashReport> crashes,
+  }) async {
+    await initialize();
+
+    final callable = _functionsInstance.httpsCallable('logCrashReports');
+
+    try {
+      await retry(
+        () async {
+          await callable.call<Map<String, dynamic>>({
+            'gigId': gigId,
+            'testerId': testerId,
+            'crashes': crashes.map((c) => c.toJson()).toList(),
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+          });
+        },
+        retryIf: (e) =>
+            e is FirebaseFunctionsException || e is FirebaseException,
+        maxAttempts: 3,
+      );
+    } catch (e) {
+      debugPrint('Failed to log crash reports: $e');
+      // Don't throw, just log the error
     }
   }
 }
